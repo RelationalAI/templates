@@ -24,11 +24,19 @@ TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15
 # TEST_FRAC = 0.15 (remainder)
 
-# Load and denormalize source data into a single Subscriber feature table.
+# Load the subscribers, their plan contracts, and the calls.
 sub_df = pd.read_csv(DATA_DIR / "subscribers.csv", parse_dates=["SIGNUP_DATE"])
 plan_df = pd.read_csv(
     DATA_DIR / "plans_contracts.csv",
-    parse_dates=["CONTRACT_START_DATE", "CONTRACT_END_DATE"],
+    usecols=[
+        "SUB_ID",
+        "PLAN_TYPE",
+        "MONTHLY_RATE_USD",
+        "DATA_LIMIT_GB",
+        "TERM_MONTHS",
+        "AUTO_RENEW",
+        "EARLY_TERMINATION_FEE_USD",
+    ],
 )
 calls_df = pd.read_csv(
     DATA_DIR / "call_detail_records.csv", parse_dates=["CALL_START_TIME"]
@@ -40,31 +48,29 @@ sub_df = sub_df.drop(
     columns=["FIRST_NAME", "LAST_NAME", "EMAIL", "PHONE"], errors="ignore"
 )
 
-# Each subscriber has exactly one active contract; left-join plan attrs onto
-# the subscriber row (1:1 denormalization).
-plan_keep = plan_df[
-    [
-        "SUB_ID",
-        "PLAN_TYPE",
-        "MONTHLY_RATE_USD",
-        "DATA_LIMIT_GB",
-        "TERM_MONTHS",
-        "AUTO_RENEW",
-        "EARLY_TERMINATION_FEE_USD",
-    ]
-]
-features_df = sub_df.merge(plan_keep, on="SUB_ID", how="left")
-
-model.define(Subscriber.new(model.data(features_df).to_schema()))
+model.define(Subscriber.new(model.data(sub_df).to_schema()))
 model.define(Call.new(model.data(calls_df).to_schema()))
+
+# Each subscriber has exactly one active contract (1:1 denormalization): bind its plan
+# attributes onto the subscriber. A subscriber without a contract has no plan attributes.
+plan_data = model.data(plan_df)
+model.where(Subscriber.sub_id == plan_data.SUB_ID).define(
+    Subscriber.plan_type(plan_data.PLAN_TYPE),
+    Subscriber.monthly_rate_usd(plan_data.MONTHLY_RATE_USD),
+    Subscriber.data_limit_gb(plan_data.DATA_LIMIT_GB),
+    Subscriber.term_months(plan_data.TERM_MONTHS),
+    Subscriber.auto_renew(plan_data.AUTO_RENEW),
+    Subscriber.early_termination_fee_usd(plan_data.EARLY_TERMINATION_FEE_USD),
+)
 
 # --------------------------------------------------
 # Train / Val / Test split
 # --------------------------------------------------
 # Build train/val/test splits in pandas. Stratified by segment so each split
-# preserves the segment mix; CHURN_RISK_SCORE distribution carries through.
+# preserves the segment mix; CHURN_RISK_SCORE distribution carries through. The shuffle and
+# the per-segment permutation are seeded, and PyRel has no seeded random primitive.
 rng = np.random.default_rng(SEED)
-shuffled = features_df.sample(frac=1.0, random_state=SEED).reset_index(drop=True)
+shuffled = sub_df.sample(frac=1.0, random_state=SEED).reset_index(drop=True)
 
 # Stratify split by segment to keep distribution stable across splits.
 train_idx, val_idx, test_idx = [], [], []

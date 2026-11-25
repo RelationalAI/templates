@@ -37,14 +37,14 @@ This template scores the held-out test subscribers for churn risk using both the
 
 - A per-subscriber churn-risk score, predicted by a **graph neural network (GNN) regression head** (the predictive reasoner) from plan attributes, demographics, and call-network features.
 - Call-network features enriched onto each subscriber by the **graph reasoner** -- a PageRank "social influence" score plus aggregate-derived `outgoing_calls` / `incoming_calls` counts -- so the GNN sees who each subscriber talks to.
-- A retention-ready report of the top-N highest-predicted-risk subscribers per segment: the deployed model publishes each test subscriber's predicted risk, and the report ranks and truncates it per segment.
+- A retention-ready report of the top-N highest-predicted-risk subscribers per segment: the deployed model publishes each test subscriber's predicted risk and its rank within its segment, and the report prints the first N of each segment.
 - A pipeline that runs end-to-end on the small bundled telco dataset (~1,200 subscribers, ~6,000 calls) with no Snowflake source-data setup and no GPU.
 
 Built using the **graph reasoner** (PageRank on the call graph) and the **predictive reasoner** (GNN regression scored per subscriber).
 
 ## What's included
 
-- **Model**: `model/` — the deployed model: concepts, data and splits (`schema.py`, `source.py`), the call graph, the features and the GNN (`reasoning.py`)
+- **Model**: `model/` — the deployed model: concepts, data and splits (`schema.py`, `source.py`), the call graph and call features (`call_signals.py`), the GNN and its published predictions (`churn_predictor.py`), and the counts, score range, per-segment ranks and RMSE the report prints (`data_profile.py`, `prediction_summary.py`)
 - **Training**: `train.py` — trains the GNN over the deployed splits and registers its version
 - **Query**: `queries/churn_report.py` — prints the top-N highest-predicted-risk subscribers per segment from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
@@ -134,7 +134,7 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
      predictive:
        name: subscriber_retention_gnn     # created on first use if it doesn't exist
        gnns:
-         churn_risk:                    # the GNN's name in model/reasoning.py
+         churn_risk:                    # the GNN's name in model/churn_predictor.py
            registry: <DB>.SUBSCRIBER_RETENTION
            model: CHURN_RISK
            version: V1                  # train.py registers this version
@@ -237,8 +237,11 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
 ├── model/
 │   ├── __init__.py                 # exports for train.py and the query
 │   ├── schema.py                   # concepts and the Train/Val/Test task relationships
-│   ├── source.py                   # bundled CSVs and the stratified split
-│   └── reasoning.py                # call graph, PageRank, call-volume features, the GNN
+│   ├── source.py                   # bundled CSVs, plan attributes, and the stratified split
+│   ├── call_signals.py             # call graph, PageRank, call-volume features
+│   ├── churn_predictor.py          # the GNN and the published predicted risk
+│   ├── data_profile.py             # subscriber, call, and split counts; churn-risk score range
+│   └── prediction_summary.py       # rank within segment, scored subscribers per segment, RMSE
 ├── train.py                        # trains the GNN and registers its version
 ├── queries/
 │   └── churn_report.py             # top-N highest-predicted-risk subscribers per segment
@@ -298,9 +301,9 @@ Subscribers + Plans + Call records (bundled CSVs, denormalized to Subscriber)
 
 **4. Train and predict.** The split is stratified by `SEGMENT` so each segment's risk distribution carries through train/val/test. The GNN trains as a regression head evaluated with RMSE, then scores the held-out test subscribers; predictions bind back as `Subscriber.predictions`, and a rule publishes each one on its own `ChurnRiskPrediction` concept for downstream queries.
 
-**5. Top-N per segment.** A query joins the published predicted risk to subscriber metadata, and the report ranks it within each segment (ties by subscriber ID), surfacing the highest-predicted-risk subscribers a retention team should act on first.
+**5. Top-N per segment.** A rule links each published prediction to its subscriber and ranks it within the subscriber's segment (ties by subscriber ID), and the report prints the first N of each segment: the highest-predicted-risk subscribers a retention team should act on first.
 
-For the implementation, see `model/reasoning.py` and `queries/churn_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/call_signals.py`, `model/churn_predictor.py`, `model/prediction_summary.py`, and `queries/churn_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -316,7 +319,7 @@ For the implementation, see `model/reasoning.py` and `queries/churn_report.py`; 
 
 - **Switch to binary churn classification** — change `task_type="regression"` → `"binary_classification"` and set the train/val target to a Boolean churn outcome instead of a continuous risk score. The graph + rules stages stay identical.
 - **Add weights to the call graph** — set `weighted=True` on the `Graph(...)` call and add an aggregated edge-weight property (e.g. total call-duration or call-count per pair). The PageRank scores will reflect call intensity, not just topology.
-- **Bring more features in** — the bundled `billing_events.csv` is not used by the default pipeline. To wire it in as a billing-driven feature, declare a `BillingEvent` concept in `model/schema.py`, load it in `model/source.py`, derive a `Subscriber.late_payment_count` rule from `PAYMENT_STATUS = "OVERDUE"` in `model/reasoning.py`, then add it to the integer features in `PropertyTransformer`:
+- **Bring more features in** — the bundled `billing_events.csv` is not used by the default pipeline. To wire it in as a billing-driven feature, declare a `BillingEvent` concept in `model/schema.py`, load it in `model/source.py`, derive a `Subscriber.late_payment_count` rule from `PAYMENT_STATUS = "OVERDUE"` in a new `model/billing_signals.py` that `model/churn_predictor.py` imports as it imports `call_signals.py`, then add it to the integer features in `PropertyTransformer`:
 
   ```python
   billing_df = pd.read_csv(DATA_DIR / "billing_events.csv")
