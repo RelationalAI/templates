@@ -6,7 +6,7 @@ from relationalai.semantics.std import aggregates as aggs
 
 from . import partnership_network  # noqa: F401
 from .community_profiles import Community
-from .schema import Organization, Partnership, model
+from .schema import Organization, model
 
 # One NetworkSummary instance holds the network-wide figures.
 NetworkSummary = model.Concept("NetworkSummary", identify_by={"id": Integer})
@@ -42,8 +42,13 @@ model.define(
         aggs.avg(Organization, Organization.degree).per(NetworkSummary)
     )
 )
-# Each pair of partners is one Partnership row, so the count is the network's partnership total.
-model.define(NetworkSummary.n_partnerships(aggs.count(Partnership).per(NetworkSummary)))
+# Each undirected partnership adds one to the degree of both partners, so the total is half the
+# degree sum; rows listing the same pair in both directions are one partnership of the graph.
+model.define(
+    NetworkSummary.n_partnerships(
+        aggs.sum(Organization, Organization.degree).per(NetworkSummary) // 2
+    )
+)
 
 # The most connected organization has the highest degree centrality, ties broken by the lower id.
 # The centrality is negated so both keys sort ascending.
