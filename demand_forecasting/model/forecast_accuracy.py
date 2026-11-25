@@ -32,10 +32,13 @@ model.define(SaleForecast.predicted(math.maximum(Sale.predictions.predicted_valu
     Sale.predictions, _of_sale
 )
 model.define(SaleForecast.error(SaleForecast.predicted - SaleForecast.actual))
-# The week starts on the Monday on or before the sale date.
+# The week starts at midnight on the Monday on or before the sale date, whatever the sale's time.
+_sale_day = datetime.datetime.to_date(Sale.date)
 model.define(
     SaleForecast.week_start(
-        datetime.datetime.subtract(Sale.date, datetime.days(datetime.datetime.weekday(Sale.date)))
+        datetime.date.to_datetime(
+            datetime.date.subtract(_sale_day, datetime.days(datetime.date.weekday(_sale_day)))
+        )
     )
 ).where(_of_sale)
 model.define(SaleForecast.city(Store.city)).where(_of_sale, Sale.store_id == Store.store_id)
