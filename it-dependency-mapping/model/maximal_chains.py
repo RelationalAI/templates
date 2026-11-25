@@ -22,12 +22,13 @@ model.where(
 ).define(MaximalChain(_path))
 model.where(DependencyPathStep(_path, _end, MAX_DEPTH)).define(MaximalChain(_path))
 
-# The longest maximal chain: most hops first, ties broken by the chain label. The hop count is
-# negated so both keys sort ascending.
+# The longest maximal chain: most hops first, ties broken by the chain label and then the path id,
+# so exactly one path qualifies even when two chains share a label. The hop count is negated so
+# every key sorts ascending.
 LongestChain = model.Relationship(f"dependency path {Hash:path} is the longest maximal chain")
 _hops, _n_features, _n_owners, _chain = Integer.ref(), Integer.ref(), Integer.ref(), String.ref()
 model.where(
     MaximalChain(_path),
     PathSummary(_path, _hops, _n_features, _n_owners, _chain),
-    aggs.rank(-_hops, _chain) == 1,
+    aggs.rank(-_hops, _chain, _path) == 1,
 ).define(LongestChain(_path))

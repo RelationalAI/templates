@@ -89,11 +89,13 @@ if __name__ == "__main__":
         n_owners.alias("n_owners"),
         chain.alias("chain"),
     )
+    # The path id keeps distinct chains that share a label as separate rows and breaks ties
+    # in the same order as the model's longest-chain rank.
     maximal = (
         model.where(MaximalChain(path), PathSummary(path, hops, n_features, n_owners, chain))
-        .select(*summary_columns)
+        .select(path.alias("path"), *summary_columns)
         .to_df()
-        .sort_values(["hops", "chain"], ascending=[False, True])
+        .sort_values(["hops", "chain", "path"], ascending=[False, True, True])
     )
 
     print(
