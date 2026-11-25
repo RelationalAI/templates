@@ -13,7 +13,6 @@ from model import (
     TOTAL_BUDGET,
     Campaign,
     CampaignPlan,
-    ConversionLift,
     CurrentConversions,
     RegionSpend,
     SolveStatus,
@@ -36,9 +35,8 @@ if __name__ == "__main__":
     print(f"Total expected conversions (optimized): {objective_value:,.1f}")
 
     current_total = model.select(CurrentConversions).to_df().iloc[0, 0]
-    lift = model.select(ConversionLift).to_df().iloc[0, 0]
     print(f"Total expected conversions (current):   {current_total:,.1f}")
-    print(f"Lift: {lift * 100:+.1f}%")
+    print(f"Lift: {(objective_value - current_total) / current_total * 100:+.1f}%")
 
     # The id keeps campaigns that share every displayed value as separate rows.
     plan = CampaignPlan.ref()
@@ -50,10 +48,10 @@ if __name__ == "__main__":
         Campaign.x_budget.alias("optimized"),
         Campaign.conversion_rate.alias("rate"),
         plan.delta.alias("delta"),
-        plan.multiple.alias("multiple"),
     ).where(plan.campaign == Campaign).to_df()
 
     print("\nBudget reallocation per campaign (sorted by largest absolute change):")
+    results_df["multiple"] = results_df["optimized"] / results_df["current"]
     results_df = results_df.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
     print(results_df.drop(columns="id").to_string(index=False))
 

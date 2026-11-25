@@ -69,30 +69,20 @@ model.define(SolveStatus(problem.termination_status()), TotalConversions(problem
 # Compare the optimized plan with the current budgets
 # --------------------------------------------------
 
-# Expected conversions at the current budgets, and the optimized plan's lift over
-# them as a fraction of the current figure.
+# Expected conversions at the current budgets.
 CurrentConversions = model.Relationship(
     f"campaign roi current conversions is {Float:current_conversions}"
 )
-ConversionLift = model.Relationship(f"campaign roi conversion lift is {Float:lift}")
 model.define(CurrentConversions(sum(Campaign, Campaign.current_budget * Campaign.conversion_rate)))
-_optimized, _current = Float.ref(), Float.ref()
-model.where(TotalConversions(_optimized), CurrentConversions(_current)).define(
-    ConversionLift((_optimized - _current) / _current)
-)
 
-# Each campaign's change from its current budget. These values are computed from the
-# solution, so they live on CampaignPlan, not Campaign: such a property on the concept
-# the solve reads fails the deploy.
+# Each campaign's change from its current budget. It is computed from the solution, so
+# it lives on CampaignPlan, not Campaign: such a property on the concept the solve reads
+# fails the deploy.
 CampaignPlan = model.Concept("CampaignPlan", identify_by={"campaign": Campaign})
 CampaignPlan.delta = model.Property(f"{CampaignPlan} changes its budget by {Float:delta}")
-CampaignPlan.multiple = model.Property(
-    f"{CampaignPlan} has {Float:multiple} times its current budget"
-)
 model.define(CampaignPlan.new(campaign=Campaign))
 model.where(CampaignPlan.campaign == Campaign).define(
-    CampaignPlan.delta(Campaign.x_budget - Campaign.current_budget),
-    CampaignPlan.multiple(Campaign.x_budget / Campaign.current_budget),
+    CampaignPlan.delta(Campaign.x_budget - Campaign.current_budget)
 )
 
 # Spend per region: current, optimized, and the optimized share of TOTAL_BUDGET.

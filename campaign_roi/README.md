@@ -223,7 +223,7 @@ Total current budget across all campaigns: $1,130K. WEST has the two highest-rat
 The model has one source concept: one `Campaign` per row of `campaigns.csv`, enriched with a decision-variable property after the solve. Two further concepts summarize the solved plan.
 
 - **Key entities**: `Campaign` — a marketing campaign with a current budget, region tag, and empirical conversion rate; its optimized budget is the decision variable populated after the solve.
-- **Plan summaries**: `CampaignPlan` — each campaign's change from its current budget and its multiple of it; `RegionSpend` — each region's current and optimized spend and the optimized share of `TOTAL_BUDGET`. Nullary relationships publish the expected conversions at the current budgets and the optimized plan's lift over them.
+- **Plan summaries**: `CampaignPlan` — each campaign's change from its current budget; `RegionSpend` — each region's current and optimized spend and the optimized share of `TOTAL_BUDGET`. A nullary relationship publishes the expected conversions at the current budgets.
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
@@ -247,7 +247,7 @@ The objective maximizes total expected conversions — the sum over campaigns of
 
 ### 4. Plan comparison
 
-Rules over the solved budgets publish the expected conversions at the current budgets and the optimized plan's lift over them, each campaign's change and multiple of its current budget, and each region's current and optimized spend. They sit on `CampaignPlan` and `RegionSpend`, not on `Campaign`, which the solve reads.
+Rules publish the expected conversions at the current budgets and, from the solved budgets, each campaign's change and each region's current and optimized spend. The solution-derived values sit on `CampaignPlan` and `RegionSpend`, not on `Campaign`, which the solve reads. The report divides by the current figures for the lift and each campaign's multiple, so a campaign with a zero current budget keeps its row with a missing multiple.
 
 See `model/budget_plan.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
