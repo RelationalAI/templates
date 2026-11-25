@@ -7,6 +7,12 @@ Centrality metrics in RelationalAI:
 - Apply PageRank to identify the most influential distribution hubs where aid naturally flows.
 - Calculate Degree Centrality to find highly connected critical nodes that serve as network hubs.
 - Calculate each point's incoming and outgoing route counts.
+- Rank the points, classify them into strategic categories, and total the network and each region.
+
+Modules: `supply_network.py` (flow weight, graph, and metrics), `point_rankings.py` (influence rank and
+the most connected points), `strategic_categories.py` (categories and the rank within each), and
+`network_summary.py` (network and regional totals). Each module imports the modules whose declarations
+it reads.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -15,13 +21,19 @@ Run:
     `streamlit run app.py` starts the interactive app, both from the deployed model.
 """
 
-from .reasoning import degree_centrality, graph, indegree, outdegree, pagerank
+from . import point_rankings
+from .network_summary import NetworkSummary, RegionSummary
 from .schema import DistributionPoint, SupplyRoute, model
 from .source import DATA_DIR
+from .strategic_categories import PointCategory
+from .supply_network import degree_centrality, graph, indegree, outdegree, pagerank
 
 __all__ = [
     "DATA_DIR",
     "DistributionPoint",
+    "NetworkSummary",
+    "PointCategory",
+    "RegionSummary",
     "SupplyRoute",
     "degree_centrality",
     "graph",
@@ -29,4 +41,5 @@ __all__ = [
     "model",
     "outdegree",
     "pagerank",
+    "point_rankings",
 ]
