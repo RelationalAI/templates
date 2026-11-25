@@ -19,7 +19,7 @@ Workforce scheduling is a common operational challenge: given a set of workers, 
 
 This template uses **Prescriptive** reasoning to formulate the shift assignment problem as a constraint satisfaction model. Workers are assigned to shifts they are available for, subject to minimum coverage requirements per shift and a limit on how many shifts each worker can take. The solver (MiniZinc) finds feasible assignments that satisfy all constraints simultaneously.
 
-The template also demonstrates scenario analysis by sweeping over different minimum coverage levels. All coverage levels are solved together as one feasibility problem, so the solve succeeds only if every target is achievable with your current workforce and availability data; an infeasible result means at least one target needs more workers or availability (see *Troubleshooting*).
+The template also demonstrates scenario analysis by sweeping over different minimum coverage levels. All coverage levels are solved together as one feasibility problem, so an infeasible result means at least one target cannot be met with your current workforce, availability or shift capacities (see *Troubleshooting*). A shift with no available workers has no assignments and gets no coverage requirement, so a successful solve does not cover it.
 
 ## Who this is for
 
