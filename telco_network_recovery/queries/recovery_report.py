@@ -25,6 +25,7 @@ from model import (
     EquipmentSplitSize,
     FailureIntensitySpread,
     GnnRecallCounts,
+    IntenseTowerCount,
     ModelAdvisory,
     NetworkEquipment,
     PositiveProbabilitySpread,
@@ -52,7 +53,8 @@ TOP_SUBSCRIBERS = 10
 
 
 def published_row(relationship, **field_types) -> dict:
-    """The row a nullary relationship publishes, by field name; the field types name its fields in order."""
+    """The one row a global-summary relationship publishes, by field name; the field types name its
+    fields in order."""
     refs = {name: kind.ref() for name, kind in field_types.items()}
     df = model.where(relationship(*refs.values())).select(*(ref.alias(name) for name, ref in refs.items())).to_df()
     return {name: df[name].iloc[0] for name in refs}
@@ -71,7 +73,7 @@ def restore_branch_counts() -> dict:
 
 def region_counts(relationship, first_seen: pd.Series) -> pd.Series:
     """A relationship's towers per region, most first; ties keep the order in which their regions
-    first appear in `first_seen`."""
+    first appear in `first_seen`. A tower without a region is not counted."""
     towers, region = Integer.ref(), String.ref()
     counts = (
         model.where(relationship(towers, region))
@@ -79,7 +81,7 @@ def region_counts(relationship, first_seen: pd.Series) -> pd.Series:
         .to_df()
         .set_index("region")["towers"]
     )
-    order = pd.Index(first_seen.drop_duplicates(), name="region")
+    order = pd.Index(first_seen.dropna().drop_duplicates(), name="region")
     return counts.reindex(order).astype(int).sort_values(ascending=False, kind="stable")
 
 
@@ -161,7 +163,7 @@ def stage_1_predictive() -> bool:
     )
     print(
         f"  Towers with failure_intensity > {FAILURE_INTENSITY_THRESHOLD}: "
-        f"{int(restore_branch_counts()['predictive'])} / {int(spread['scored_towers'])}"
+        f"{int(published_row(IntenseTowerCount, towers=Integer)['towers'])} / {int(spread['scored_towers'])}"
     )
 
     # GNN end-to-end recall on at-risk items. Two views:
@@ -251,13 +253,15 @@ def stage_2_rules() -> pd.DataFrame:
 
     # Per-branch contribution, from the branch counts the model publishes.
     only_predictive = int(branches["only_predictive"])
+    # With no critical towers the share is undefined and prints as nan%.
+    only_predictive_share = only_predictive / n_critical if n_critical else float("nan")
     print("\n  Per-branch contribution (a tower can fire on multiple branches):")
     print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(branches['degraded'])} towers")
     print(f"    Branch 2 (WEST + high packet loss + low health):          {int(branches['packet_loss'])} towers")
     print(f"    Branch 3 (failure_intensity > {FAILURE_INTENSITY_THRESHOLD}, any region):  "
           f"{int(branches['predictive'])} towers")
     print(f"    Towers flagged ONLY by the predictive branch:             {only_predictive} "
-          f"({only_predictive / n_critical:.0%} of flagged set)")
+          f"({only_predictive_share:.0%} of flagged set)")
 
     print("\n  Top 20 by predicted failure intensity:")
     print(flagged_df.head(20).to_string(index=False))
@@ -278,12 +282,11 @@ def stage_3_graph() -> pd.DataFrame:
             Subscriber.churn_risk_score.alias("churn"),
             Subscriber.customer_value.alias("customer_value"),
             Subscriber.influence_score.alias("pagerank"),
-            Subscriber.customer_rank.alias("customer_rank"),
         )
-        .where(Subscriber.customer_rank <= TOP_SUBSCRIBERS)
         .to_df()
-        .sort_values("customer_rank")
-        .drop(columns="customer_rank")
+        # Ties on customer value list the lower subscriber id first.
+        .sort_values(["customer_value", "sub_id"], ascending=[False, True])
+        .head(TOP_SUBSCRIBERS)
     )
     print(f"\n  Top {TOP_SUBSCRIBERS} subscribers by customer_value (PageRank shown for reference):")
     print(top_subs.to_string(index=False))
@@ -360,11 +363,7 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
     if objective:
         print(f"• objective: {round(objective[0], 9)}\n")
 
-    # Extract selected upgrades. Each carries the rationale the model publishes: the upstream
-    # signals that flagged its tower, OR-combined:
-    #   - operational       : Stage 2 branch 1 (degraded) or 2 (packet loss)
-    #   - advisory/predicted: Stage 2 branch 3 (GNN failure intensity)
-    #   - high-value        : weighted_impact in the top quartile of critical towers
+    # Extract selected upgrades.
     selected_df = (
         model.where(TowerUpgradeOption.is_selected_upgrade())
         .select(
@@ -373,14 +372,14 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
             TowerUpgradeOption.capacity_increase_gbps.alias("capacity_gbps"),
             TowerUpgradeOption.cost.alias("cost"),
             TowerUpgradeOption.install_weeks.alias("install_weeks"),
-            TowerUpgradeOption.rationale.alias("rationale"),
         )
         .to_df()
     )
     selected_df["cost"] = selected_df["cost"].astype(float)
 
     selected_df = selected_df.merge(
-        flagged_df[["tower_id", "region", "failure_intensity"]],
+        flagged_df[["tower_id", "region", "failure_intensity",
+                    "branch_degraded", "branch_packet_loss", "branch_predictive", "high_value"]],
         on="tower_id",
         how="left",
     ).sort_values(["region", "tier"])
@@ -390,6 +389,19 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         on="tower_id",
         how="left",
     )
+
+    # Per-tower selection rationale: the upstream signals that flagged the
+    # tower, OR-combined, from the flags the model publishes. A selected tower is
+    # critical, so it fires an operational or the predictive branch.
+    def _rationale(row):
+        signals = (
+            ("operational", row["branch_degraded"] or row["branch_packet_loss"]),  # Stage 2 branch 1 or 2
+            ("advisory/predicted", row["branch_predictive"]),  # Stage 2 branch 3 (GNN failure intensity)
+            ("high-value", row["high_value"]),  # weighted_impact in the top quartile of critical towers
+        )
+        return ", ".join(name for name, fired in signals if fired)
+
+    selected_df["rationale"] = selected_df.apply(_rationale, axis=1)
 
     # The plan headline, published by the model as ontology.
     plan_df = (
@@ -406,7 +418,7 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         )
         .to_df()
     )
-    n_selected = int(plan_df["towers"].iloc[0]) if len(plan_df) > 0 else 0
+    n_selected = len(selected_df)
 
     print(f"\n  Selected upgrades: {n_selected}")
     print(

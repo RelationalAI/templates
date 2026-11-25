@@ -50,18 +50,12 @@ EquipmentHealth.health_score = Property(f"{EquipmentHealth} has {Float:health_sc
 EquipmentHealth.measurement_date = Property(f"{EquipmentHealth} has {DateTime:measurement_date}")
 EquipmentHealth.equipment_id_fk = Property(f"{EquipmentHealth} has {String:equipment_id_fk}")
 
-# Advisory concept: a manufacturer-issued recall / defect batch /
-# firmware bug / EOL / security-patch notice as issued. A MODEL can carry
-# several, of different types.
-Advisory = Concept("Advisory", identify_by={"model": String, "advisory_type": String})
-Advisory.severity = Property(f"{Advisory} has {Float:severity}")
-Advisory.issued_date = Property(f"{Advisory} has {DateTime:issued_date}")
-
-# ModelAdvisory concept: the most severe advisory that applies to an
-# equipment MODEL (derived in advisory_signals.py). The relational signal
-# the GNN propagates to every NetworkEquipment sharing the affected MODEL.
-# Multiple advisories on the same MODEL collapse to one row so the GNN
-# sees one ModelAdvisory node per affected fleet.
+# ModelAdvisory concept: a manufacturer-issued recall / defect batch /
+# firmware bug / EOL / security-patch notice that applies to an
+# equipment MODEL. The relational signal the GNN propagates to every
+# NetworkEquipment sharing the affected MODEL. Multiple advisories on
+# the same MODEL collapse to one row (the max severity) so the GNN sees
+# one ModelAdvisory node per affected fleet.
 ModelAdvisory = Concept("ModelAdvisory", identify_by={"model": String})
 ModelAdvisory.advisory_type = Property(f"{ModelAdvisory} has {String:advisory_type}")
 ModelAdvisory.severity = Property(f"{ModelAdvisory} has {Float:severity}")

@@ -44,7 +44,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ## What's included
 
-- **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology, in the `model/` package (`schema.py` declares the 8 source-data concepts and the GNN task relationships, `source.py` loads the bundled CSVs and the equipment split, and one module per stage states its rules: `equipment_failure.py` and `advisory_signals.py` the GNN and its advisories, `critical_towers.py` the critical-tower rules, `customer_impact.py` the PageRank and customer impact, `call_paths.py` the call paths, and `tower_upgrades.py` the upgrade MIP). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh scores the equipment, derives the critical towers, and solves the upgrade MIP.
+- **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology, in the `model/` package (`schema.py` declares the 8 source-data concepts and the GNN task relationships, `source.py` loads the bundled CSVs, the equipment split and the most severe advisory per MODEL, and a module per stage states its rules: `equipment_failure.py` the GNN (with `advisory_signals.py` for the advisory coverage figures), `critical_towers.py` the critical-tower rules, `customer_impact.py` the PageRank and customer impact, `call_paths.py` the call paths, and `tower_upgrades.py` the upgrade MIP). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh scores the equipment, derives the critical towers, and solves the upgrade MIP.
 - **Training**: `train.py` — trains the equipment-failure GNN over the deployed splits and registers its version.
 - **Query**: `queries/recovery_report.py` — prints the per-stage diagnostics and the plan from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
@@ -287,11 +287,11 @@ Use this sequence to deploy the model, train the GNN, and query the recovery pla
 │   ├── schema.py                   # concepts, GNN task relationships, plan relationships
 │   ├── source.py                   # bundled CSVs and the equipment split
 │   ├── equipment_failure.py        # at-risk label, GNN, tower failure intensity, training and score figures
-│   ├── advisory_signals.py         # most severe advisory per MODEL and the equipment it covers
+│   ├── advisory_signals.py         # advisory counts and the equipment the advised MODELs cover
 │   ├── critical_towers.py          # tower averages, the three restore branches, branch and region counts
-│   ├── customer_impact.py          # PageRank, customer value and rank, per-tower impact
+│   ├── customer_impact.py          # PageRank, customer value, per-tower impact
 │   ├── call_paths.py               # call-path enumeration from the seed hub
-│   └── tower_upgrades.py           # upgrade MIP, plan summary, and selection rationale
+│   └── tower_upgrades.py           # upgrade MIP, plan summary, and rationale tally
 ├── train.py                        # trains the GNN and registers its version
 ├── queries/
 │   └── recovery_report.py          # per-stage diagnostics and the plan
@@ -341,8 +341,8 @@ The ontology shape is independent of the load pipeline.
 
 One shared ontology threads all five stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
 
-- **Key entities**: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `Advisory`, `Subscriber`, `CallDetailRecord`, `TowerUpgradeOption`; plus the derived `ModelAdvisory` (the most severe advisory per MODEL), `TowerFailureScore` (bridge for the GNN output) and `RestorePlan` (singleton plan headline).
-- **Primary identifiers**: string ids on the base entities (e.g. `TOWER_ID`, `EQUIPMENT_ID`, `SUB_ID`); composite keys on `TowerUpgradeOption` (`tower_id` + `tier`) and `Advisory` (`model` + `advisory_type`); MODEL string on the derived `ModelAdvisory`.
+- **Key entities**: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `ModelAdvisory`, `Subscriber`, `CallDetailRecord`, `TowerUpgradeOption`; plus the derived `TowerFailureScore` (bridge for the GNN output) and `RestorePlan` (singleton plan headline).
+- **Primary identifiers**: string ids on the base entities (e.g. `TOWER_ID`, `EQUIPMENT_ID`, `SUB_ID`); composite key on `TowerUpgradeOption` (`tower_id` + `tier`); MODEL string on `ModelAdvisory`.
 - **Important invariants**: `severity`, `churn_risk_score`, and `health_score` are fractions in `[0, 1]`; `capacity_gbps` and `cost` are non-negative; the GNN's `at_risk` label is `1` if `STATUS` is `FAILING` or `WARNING`; Stage 5 decision variables are binary.
 
 For the full concept and property definitions, see `model/`; `runbook.md` builds them step by step with the RAI skills.
@@ -372,7 +372,7 @@ Focus on the first changes most users will make.
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
 - Regenerate the synthetic corpus: run `python _synthesize_advisory_data.py` in `data/`, then deploy again and train a new version. The generator uses a fixed seed, so it reproduces the bundled files; change its `SEED` for a different corpus.
 - The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
-- For Snowflake-backed runs, replace the CSV reads in `model/source.py` with Snowflake reads that return pandas DataFrames; the seeded train/validation/test split there runs in pandas. The equipment frame needs its `STATUS` column, which the model turns into the `at_risk` label, and the advisory frame can hold several advisories per MODEL, from which the model keeps the most severe.
+- For Snowflake-backed runs, replace the CSV reads in `model/source.py` with Snowflake reads that return pandas DataFrames: the seeded train/validation/test split and the advisory selection there run in pandas. The equipment frame needs its `STATUS` column, which the model turns into the `at_risk` label.
 - The model derives `Subscriber.customer_value` from `lifetime_value` and `churn_risk_score` in `model/customer_impact.py`, so a subscriber feed needs both `LIFETIME_VALUE_USD` and `CHURN_RISK_SCORE`.
 
 ### Tune parameters

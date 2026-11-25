@@ -5,10 +5,10 @@ from pathlib import Path
 import pandas as pd
 
 from .schema import (
-    Advisory,
     CallDetailRecord,
     CellTower,
     EquipmentHealth,
+    ModelAdvisory,
     NetworkEquipment,
     NetworkPerformance,
     Subscriber,
@@ -47,10 +47,6 @@ eq_shuf = network_equipment_df.sample(frac=1, random_state=SEED).reset_index(dro
 n = len(eq_shuf)
 train_n = int(n * 0.70)
 val_n = int(n * 0.15)
-# reset_index(drop=True) on every split: model.data() infers column
-# types via df[col][0], a 0-based label lookup. An .iloc slice keeps
-# the parent index (val/test start mid-frame), so without this reset
-# the val split has no row labeled 0 -> KeyError: 0.
 train_eq_df = eq_shuf.iloc[:train_n][["EQUIPMENT_ID"]].rename(
     columns={"EQUIPMENT_ID": "equipment_id"}
 ).reset_index(drop=True)
@@ -97,8 +93,14 @@ model.define(EquipmentHealth.new(
     equipment_id_fk=src.EQUIPMENT_ID,
 ))
 
-src = model.data(advisories_df)
-model.define(Advisory.new(
+# The most severe advisory per MODEL is picked in pandas: the advisory rows carry no id, so a
+# rule could not tell apart two notices with the same MODEL and type.
+adv_collapsed = (
+    advisories_df.sort_values("SEVERITY", ascending=False)
+    .drop_duplicates(subset=["MODEL"], keep="first")
+)
+src = model.data(adv_collapsed)
+model.define(ModelAdvisory.new(
     model=src.MODEL,
     advisory_type=src.ADVISORY_TYPE,
     severity=src.SEVERITY,

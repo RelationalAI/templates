@@ -1,7 +1,7 @@
 """Equipment failure: the GNN that scores each equipment item's failure risk, each tower's summed failure
 intensity, and the figures that profile the training data and the scores."""
 
-from relationalai.semantics import Float, Integer, String
+from relationalai.semantics import Float, Integer, String, not_
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.std import aggregates as aggs
@@ -35,10 +35,10 @@ POSITIVE_PROBABILITY_CUTOFF = 0.5
 # Stage 1: Predictive -- equipment-failure binary GNN
 # --------------------------------------------------
 
-# The GNN's label: 1 for an at-risk status, 0 otherwise.
+# The GNN's label: 1 for an at-risk status, 0 otherwise, including equipment without a status.
 for _status in AT_RISK_STATUSES:
     model.where(NetworkEquipment.status == _status).define(NetworkEquipment.at_risk(1))
-model.where(*(NetworkEquipment.status != _status for _status in AT_RISK_STATUSES)).define(
+model.where(*(not_(NetworkEquipment.status == _status) for _status in AT_RISK_STATUSES)).define(
     NetworkEquipment.at_risk(0)
 )
 

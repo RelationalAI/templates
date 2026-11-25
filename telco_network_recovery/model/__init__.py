@@ -8,8 +8,8 @@ face of two distinct risk signals -- in-region operational degradation
 by manufacturer advisories (captured by a GNN). Neither signal is
 recoverable from the other alone, so the chain integrates both.
 
-- Stage 1 -- Predictive (`equipment_failure.py`, with `advisory_signals.py` for the advisories the
-  GNN reads): a binary classification GNN on
+- Stage 1 -- Predictive (`equipment_failure.py`, with `advisory_signals.py` for how much of the
+  equipment the advisories cover): a binary classification GNN on
   NetworkEquipment.at_risk (status FAILING or WARNING) over a heterogeneous *undirected* graph
   that includes EquipmentHealth <-> NetworkEquipment, NetworkEquipment
   <-> CellTower, and ModelAdvisory <-> NetworkEquipment (the
@@ -61,7 +61,6 @@ Run:
     diagnostics and the plan.
 """
 
-from . import customer_impact
 from .advisory_signals import AdvisedEquipmentCount, AdvisedModelEquipment, AdvisoryCount
 from .call_paths import (
     PATH_MAX_HOPS,
@@ -70,7 +69,12 @@ from .call_paths import (
     TopCallPathHop,
     TopCallPathStep,
 )
-from .critical_towers import FAILURE_INTENSITY_THRESHOLD, CriticalRegionCount, RestoreBranchCounts
+from .critical_towers import (
+    FAILURE_INTENSITY_THRESHOLD,
+    CriticalRegionCount,
+    IntenseTowerCount,
+    RestoreBranchCounts,
+)
 from .equipment_failure import (
     POSITIVE_PROBABILITY_CUTOFF,
     AtRiskBalance,
@@ -82,7 +86,6 @@ from .equipment_failure import (
     gnn,
 )
 from .schema import (
-    Advisory,
     CallDetailRecord,
     CellTower,
     EquipmentHealth,
@@ -114,7 +117,6 @@ __all__ = [
     "POSITIVE_PROBABILITY_CUTOFF",
     "AdvisedEquipmentCount",
     "AdvisedModelEquipment",
-    "Advisory",
     "AdvisoryCount",
     "AtRiskBalance",
     "CallDetailRecord",
@@ -124,6 +126,7 @@ __all__ = [
     "EquipmentSplitSize",
     "FailureIntensitySpread",
     "GnnRecallCounts",
+    "IntenseTowerCount",
     "ModelAdvisory",
     "NetworkEquipment",
     "NetworkPerformance",
@@ -145,7 +148,6 @@ __all__ = [
     "TowerUpgradeOption",
     "TrainEqTable",
     "ValEqTable",
-    "customer_impact",
     "gnn",
     "model",
     "problem",

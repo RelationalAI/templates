@@ -1,7 +1,7 @@
-"""Customer impact: subscriber PageRank, each subscriber's customer value and its rank, and each critical
-tower's impact on customers."""
+"""Customer impact: subscriber PageRank, each subscriber's customer value, and each critical tower's
+impact on customers."""
 
-from relationalai.semantics import Float, Integer, distinct
+from relationalai.semantics import Float, distinct
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.std import aggregates as aggs
 
@@ -95,8 +95,3 @@ model.where(
     CellTower.weighted_impact
     >= aggs.percentile(75, peer, peer.weighted_impact).where(peer.is_critical_restore()),
 ).define(CellTower.is_high_value())
-
-# Subscribers ranked by customer value, highest first, ties broken by subscriber id. The
-# value is negated so both keys sort ascending.
-Subscriber.customer_rank = model.Property(f"{Subscriber} has {Integer:customer_rank}")
-model.define(Subscriber.customer_rank(aggs.rank(-Subscriber.customer_value, Subscriber.id)))

@@ -1,14 +1,12 @@
-"""Tower upgrades: the upgrade MIP over the critical towers, the plan it yields, and each selected upgrade's
-rationale."""
+"""Tower upgrades: the upgrade MIP over the critical towers, the plan it yields, and how many selected
+upgrades each restore signal flagged."""
 
-from itertools import product
-
-from relationalai.semantics import Float, Integer, String, not_
+from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
 
 # Declare CellTower.is_critical_restore and the branch flags, and CellTower.weighted_impact and
-# CellTower.is_high_value: the decision scope, the objective's weight and the rationale signals.
+# CellTower.is_high_value: the decision scope, the objective's weight and the signals the tally counts.
 from . import critical_towers, customer_impact  # noqa: F401
 from .equipment_failure import TowerFailureScore
 from .schema import CellTower, TowerUpgradeOption, model
@@ -164,26 +162,8 @@ model.where(
 # Why each upgrade was selected
 # --------------------------------------------------
 
-# The signals that flagged a critical tower, in the order a rationale lists them; a tower
-# can carry several.
-RESTORE_SIGNALS = (
-    (CellTower.fires_operational_branch, "operational"),
-    (CellTower.fires_predictive_branch, "advisory/predicted"),
-    (CellTower.is_high_value, "high-value"),
-)
-
-# One rule per combination of signals: the rationale joins the names of the signals present
-# with ", ", or reads "(low signal)" when none is.
-TowerUpgradeOption.rationale = model.Property(f"{TowerUpgradeOption} has rationale {String:rationale}")
-for _present in product((True, False), repeat=len(RESTORE_SIGNALS)):
-    _names = [name for (_, name), on in zip(RESTORE_SIGNALS, _present) if on]
-    model.where(
-        TowerUpgradeOption.for_tower(CellTower),
-        CellTower.is_critical_restore(),
-        *(signal() if on else not_(signal()) for (signal, _), on in zip(RESTORE_SIGNALS, _present)),
-    ).define(TowerUpgradeOption.rationale(", ".join(_names) or "(low signal)"))
-
-# How many selected upgrades each signal flagged (an upgrade can fire on several).
+# How many selected upgrades each signal that flags a critical tower fired on: an operational
+# branch, the predictive branch, and a high-value tower (an upgrade can fire on several).
 RationaleTally = model.Relationship(
     f"selected upgrades fire {Integer:operational} operational, {Integer:predictive} advisory/predicted "
     f"and {Integer:high_value} high-value signals"
@@ -195,7 +175,11 @@ model.define(
                 selected_option, TowerUpgradeOption.for_tower(CellTower), signal()
             )
             | 0
-            for signal, _ in RESTORE_SIGNALS
+            for signal in (
+                CellTower.fires_operational_branch,
+                CellTower.fires_predictive_branch,
+                CellTower.is_high_value,
+            )
         )
     )
 )

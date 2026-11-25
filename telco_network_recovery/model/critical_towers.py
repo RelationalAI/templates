@@ -1,5 +1,5 @@
 """Critical towers: each tower's measured averages, the three restore branches that flag it critical, and
-the counts of towers per branch and region."""
+the counts of towers per branch and region and of scored towers above the threshold."""
 
 from relationalai.semantics import Float, Integer, String, not_
 from relationalai.semantics.std import aggregates as aggs
@@ -114,6 +114,15 @@ model.define(
         aggs.count(CellTower).where(CellTower.fires_packet_loss_branch()) | 0,
         aggs.count(CellTower).where(CellTower.fires_predictive_branch()) | 0,
         aggs.count(CellTower).where(CellTower.fires_only_predictive_branch()) | 0,
+    )
+)
+
+# How many scored towers have a failure intensity above the threshold, counted over the scores
+# whether or not a CellTower carries the tower id.
+IntenseTowerCount = model.Relationship(f"{Integer:towers} scored towers have a failure intensity above the threshold")
+model.define(
+    IntenseTowerCount(
+        aggs.count(TowerFailureScore).where(TowerFailureScore.failure_intensity > FAILURE_INTENSITY_THRESHOLD) | 0
     )
 )
 
