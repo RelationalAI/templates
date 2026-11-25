@@ -16,93 +16,93 @@ from model import (
     REINSURANCE_BUDGET,
     REINSURANCE_RATE,
     REVIEW_FLOOR,
-    CandidateMatch,
     CandidatePairCount,
     Record,
     ResolvedParty,
     ReviewPair,
     SolveStatus,
+    ceded_excess,
+    ceded_premium,
+    comparison_reduction,
     load_ground_truth,
     model,
+    num_all_pairs,
+    num_auto_merges,
+    num_confirmed_breaches,
     num_edges,
     num_nodes,
+    num_parties,
+    num_party_breaches,
+    num_record_breaches,
+    num_review_pairs,
+    num_surfaced_breaches,
 )
+
+
+def published(relationship):
+    """The one value a nullary relationship of the deployed model holds."""
+    return model.select(relationship.alias("value")).to_df()["value"].iloc[0]
+
 
 if __name__ == "__main__":
     resolved = model.select(
         Record.record_id.alias("record_id"),
         Record.entity_key.alias("entity_id"),
-        Record.source_system.alias("source_system"),
-        Record.full_name.alias("full_name"),
-        Record.created_at.alias("created_at"),
-        Record.coverage_amount.alias("coverage_amount"),
     ).to_df()
     resolved["entity_id"] = resolved["entity_id"].astype(str)
     record_ids = sorted(int(record_id) for record_id in resolved["record_id"])
-
-    candidate_count = int(model.select(CandidatePairCount).to_df().iloc[0, 0])
-    n_matches = len(model.select(CandidateMatch.pair_id).to_df())
-    review_df = (
-        model.select(
-            ReviewPair.pair_id.alias("pair_id"),
-            ReviewPair.rec_a.record_id.alias("rec_a"),
-            ReviewPair.rec_b.record_id.alias("rec_b"),
-        )
-        .to_df()
-        .sort_values("pair_id")
-    )
+    auto_entity = dict(zip(resolved["record_id"], resolved["entity_id"]))
 
     n_records = len(record_ids)
-    all_pairs = n_records * (n_records - 1) // 2
     print("=" * 64)
     print("Blocking & scoring")
     print("=" * 64)
     print(f"Records:                 {n_records}")
-    print(f"All possible pairs:      {all_pairs}")
+    print(f"All possible pairs:      {int(published(num_all_pairs))}")
     print(
-        f"Candidate pairs:         {candidate_count}  "
-        f"({100 * (1 - candidate_count / all_pairs):.1f}% fewer comparisons)"
+        f"Candidate pairs:         {int(published(CandidatePairCount))}  "
+        f"({100 * float(published(comparison_reduction)):.1f}% fewer comparisons)"
     )
-    print(f"Auto-merge matches:      {n_matches}  (score >= {AUTO_MERGE})")
-    print(f"Held for review:         {len(review_df)}  ([{REVIEW_FLOOR}, {AUTO_MERGE}))")
+    print(f"Auto-merge matches:      {int(published(num_auto_merges))}  (score >= {AUTO_MERGE})")
+    n_review = int(published(num_review_pairs))
+    print(f"Held for review:         {n_review}  ([{REVIEW_FLOOR}, {AUTO_MERGE}))")
 
-    n_nodes = int(model.select(num_nodes.alias("n")).to_df()["n"].iloc[0])
-    n_edges = int(model.select(num_edges.alias("n")).to_df()["n"].iloc[0])
+    n_nodes = int(published(num_nodes))
+    n_edges = int(published(num_edges))
     print(f"Graph:                   {n_nodes} nodes, {n_edges} match edges")
 
-    n_entities = resolved["entity_id"].nunique()
     print("\n" + "=" * 64)
     print("Resolved parties")
     print("=" * 64)
-    print(f"Auto-resolved {n_records} records into {n_entities} insured parties.")
+    print(f"Auto-resolved {n_records} records into {int(published(num_parties))} insured parties.")
 
-    resolved = resolved.sort_values(["entity_id", "created_at"])
-    golden = resolved.groupby("entity_id").tail(1).set_index("entity_id")
-    sizes = resolved.groupby("entity_id").size()
-    print("\nMulti-record parties (golden record in CAPS):")
-    for entity_id in sizes[sizes > 1].index:
-        golden_record = golden.loc[entity_id]
-        members = resolved[resolved["entity_id"] == entity_id]
-        exposure = members["coverage_amount"].sum()
-        print(
-            f"  {golden_record['full_name'].upper():<22} "
-            f"{len(members)} policies  total exposure ${exposure:>12,.0f}"
-        )
-
-    record_level_breaches = int((resolved["coverage_amount"] > ACCUMULATION_LIMIT).sum())
-    over = (
+    multi_record = (
         model.select(
-            ResolvedParty.key.alias("id"),
+            ResolvedParty.key.alias("entity_id"),
+            ResolvedParty.golden_record.full_name.alias("name"),
+            ResolvedParty.n_records.alias("n_records"),
             ResolvedParty.total_exposure.alias("exposure"),
         )
-        .where(ResolvedParty.is_over_limit())
+        .where(ResolvedParty.is_multi_record())
         .to_df()
     )
+    multi_record["entity_id"] = multi_record["entity_id"].astype(str)
+    print("\nMulti-record parties (golden record in CAPS):")
+    for _, party in multi_record.sort_values("entity_id").iterrows():
+        print(
+            f"  {party['name'].upper():<22} "
+            f"{int(party['n_records'])} policies  total exposure ${party['exposure']:>12,.0f}"
+        )
+
+    n_breached = int(published(num_party_breaches))
     print("\n" + "=" * 64)
     print(f"Accumulation control (limit ${ACCUMULATION_LIMIT:,.0f})")
     print("=" * 64)
-    print(f"Policies over the limit at the RECORD level:      {record_level_breaches}")
-    print(f"Households over the limit after RESOLUTION:       {len(over)}")
+    print(
+        "Policies over the limit at the RECORD level:      "
+        f"{int(published(num_record_breaches))}"
+    )
+    print(f"Households over the limit after RESOLUTION:       {n_breached}")
 
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     print(
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     )
     ceded = (
         model.select(
-            ResolvedParty.key.alias("id"),
+            ResolvedParty.golden_record.full_name.alias("name"),
             ResolvedParty.total_exposure.alias("exposure"),
             ResolvedParty.excess.alias("excess"),
             ResolvedParty.premium.alias("premium"),
@@ -120,58 +120,32 @@ if __name__ == "__main__":
         )
         .where(ResolvedParty.is_over_limit())
         .to_df()
+        .sort_values("excess", ascending=False)
     )
-    ceded["id"] = ceded["id"].astype(str)
-    name_by_entity = golden["full_name"].to_dict()
-    ceded["name"] = ceded["id"].map(name_by_entity).fillna("(party)")
-    ceded = ceded.sort_values("excess", ascending=False)
-    total_premium = total_ceded = 0.0
     for _, row in ceded.iterrows():
-        chosen = row["cede"] > 0.5
-        mark = "CEDE " if chosen else "keep "
-        if chosen:
-            total_premium += row["premium"]
-            total_ceded += row["excess"]
+        mark = "CEDE " if row["cede"] > 0.5 else "keep "
         print(
             f"  {mark} {row['name']:<22} exposure "
             f"${row['exposure']:>11,.0f}  excess ${row['excess']:>9,.0f}  "
             f"premium ${row['premium']:>8,.0f}"
         )
-    if len(over) and ceded.empty:
+    if n_breached and ceded.empty:
         print("  No cession plan: the solve returned no solution (see the status above).")
     else:
         print(
-            f"  -> ceded ${total_ceded:,.0f} of excess exposure for "
-            f"${total_premium:,.0f} premium (of ${REINSURANCE_BUDGET:,.0f})"
+            f"  -> ceded ${float(published(ceded_excess)):,.0f} of excess exposure for "
+            f"${float(published(ceded_premium)):,.0f} premium (of ${REINSURANCE_BUDGET:,.0f})"
         )
 
-    auto_entity = dict(zip(resolved["record_id"], resolved["entity_id"]))
-    coverage_by_record = dict(zip(resolved["record_id"], resolved["coverage_amount"]))
-    confirmed = {record_id: auto_entity[record_id] for record_id in record_ids}
-    for _, row in review_df.iterrows():
-        rec_a, rec_b = int(row["rec_a"]), int(row["rec_b"])
-        target, source = confirmed[rec_a], confirmed[rec_b]
-        for record_id in record_ids:
-            if confirmed[record_id] == source:
-                confirmed[record_id] = target
-    confirmed_exposure: dict[str, float] = {}
-    for record_id in record_ids:
-        party_id = confirmed[record_id]
-        confirmed_exposure[party_id] = (
-            confirmed_exposure.get(party_id, 0.0) + coverage_by_record[record_id]
-        )
-    confirmed_breaches = sum(
-        1 for exposure in confirmed_exposure.values() if exposure > ACCUMULATION_LIMIT
-    )
     print("\n" + "=" * 64)
     print("Review queue")
     print("=" * 64)
-    print(f"Pairs held for steward review: {len(review_df)}")
+    print(f"Pairs held for steward review: {n_review}")
     print(
         "Breaches surfaced only if the review queue is confirmed: "
-        f"{confirmed_breaches - len(over)} "
-        f"(resolution would then show {confirmed_breaches} breached "
-        f"households, not {len(over)})"
+        f"{int(published(num_surfaced_breaches))} "
+        f"(resolution would then show {int(published(num_confirmed_breaches))} breached "
+        f"households, not {n_breached})"
     )
 
     truth_df = load_ground_truth()
@@ -191,6 +165,10 @@ if __name__ == "__main__":
             "in data/ground_truth.csv"
         )
     else:
+        review_df = model.select(
+            ReviewPair.rec_a.record_id.alias("rec_a"),
+            ReviewPair.rec_b.record_id.alias("rec_b"),
+        ).to_df()
         true_pairs = {
             (rec_a, rec_b)
             for rec_a, rec_b in combinations(record_ids, 2)
