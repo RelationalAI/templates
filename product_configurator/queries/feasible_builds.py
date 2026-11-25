@@ -6,6 +6,7 @@ pivot table (one row per build, one column per slot, sorted ascending by total p
 """
 
 from model import (
+    BuildTotal,
     NumPoints,
     Option,
     SelectedOption,
@@ -33,21 +34,28 @@ if __name__ == "__main__":
         # Inspect every feasible configuration
         # ------------------------------------------
 
-        # `SelectedOption` holds, per solution, the options the solver picked. Pivot to
-        # one row per build, one column per slot, sorted ascending by the exact total in cents.
+        # `SelectedOption` holds, per solution, the options the solver picked, and `BuildTotal`
+        # the exact total price of each solution in cents. Pivot to one row per build, one
+        # column per slot, sorted ascending by total price.
         sol_idx = Integer.ref()
+        total = Integer.ref()
         selections_df = (
             model.select(
                 sol_idx.alias("solution"),
                 Option.slot.name.alias("slot"),
                 Option.name.alias("option"),
-                Option.price_cents.alias("price_cents"),
             )
             .where(SelectedOption(sol_idx, Option))
             .to_df()
         )
+        total_cents = (
+            model.select(sol_idx.alias("solution"), total.alias("total_cents"))
+            .where(BuildTotal(sol_idx, total))
+            .to_df()
+            .set_index("solution")["total_cents"]
+            .sort_index()
+        )
         build_view = selections_df.pivot(index="solution", columns="slot", values="option")
-        total_cents = selections_df.groupby("solution")["price_cents"].sum()
         build_view["total_$"] = total_cents / 100
         build_view = build_view.loc[total_cents.sort_values().index].reset_index()
         build_view.columns.name = None

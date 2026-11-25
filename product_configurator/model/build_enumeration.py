@@ -1,4 +1,4 @@
-"""Product configuration problem: every feasible build for the target region."""
+"""Build enumeration: every feasible build of the product for the target region, and the price of each."""
 
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -102,3 +102,19 @@ SelectedOption = model.Relationship(
     f"product configurator solution {Integer:solution} selects {Option:option}"
 )
 model.where(selected_var.values(solution, 1)).define(SelectedOption(solution, selected_var.option))
+
+# --------------------------------------------------
+# Price each build
+# --------------------------------------------------
+
+# The price of each build: the sum of its selected options' prices, in cents.
+BuildTotal = model.Relationship(
+    f"product configurator solution {Integer:solution} costs {Integer:total_cents} cents"
+)
+_in_build, _priced = Option.ref(), Option.ref()
+model.where(SelectedOption(solution, _in_build)).define(
+    BuildTotal(
+        solution,
+        sum(_priced, _priced.price_cents).per(solution).where(SelectedOption(solution, _priced)),
+    )
+)

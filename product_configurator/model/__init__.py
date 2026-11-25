@@ -8,15 +8,21 @@ and publish every distinct build, read via `Variable.values(solution_index, valu
 -- a configurator UI rarely wants a single build; a buyer's quote, a sales
 playbook, and a trade-off slider all need the population of configurations.
 
+Modules:
+    `schema.py` declares the concepts, `source.py` loads the catalog and checks it for the
+    target region, and `build_enumeration.py` states the decision problem, solves it, and
+    publishes the builds and the price of each.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve.
     `python -m queries.feasible_builds` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .build_enumeration import (
     MAX_CONFIGURATIONS,
     PRICE_CEILING_CENTS,
+    BuildTotal,
     NumPoints,
     SelectedOption,
     SolveSettings,
@@ -31,6 +37,7 @@ __all__ = [
     "MAX_CONFIGURATIONS",
     "PRICE_CEILING_CENTS",
     "TARGET_REGION",
+    "BuildTotal",
     "Excludes",
     "Implies",
     "NumPoints",

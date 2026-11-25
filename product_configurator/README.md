@@ -41,7 +41,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ## What's included
 
-- `model/` -- ontology, decisions, constraints, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it
+- `model/` -- ontology, decisions, constraints, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `build_enumeration.py` states the decision problem, solves it, and prices each build); `rai models deploy --path model` deploys it
 - `queries/feasible_builds.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/slots.csv` -- 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
@@ -198,7 +198,7 @@ product_configurator/
     __init__.py              # exports of the deployed model
     schema.py                # Slot, Option, Implies, and Excludes concepts
     source.py                # loads the sample CSVs and checks the catalog for the target region
-    reasoning.py             # decisions, constraints, solver configuration
+    build_enumeration.py     # decisions, constraints, solver configuration, and each build's total price
   queries/
     feasible_builds.py       # report from the deployed model
   data/
@@ -255,9 +255,9 @@ slots + options + implies + excludes + regional rules → region-filtered select
 - **Excludes** — for each region-allowed pair, `selected[left] + selected[right] <= 1`: at most one of the pair.
 - **Price ceiling** — the price-weighted sum of selected options stays within `PRICE_CEILING_CENTS`.
 
-**4. Solve in multi-solution mode, deploy, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)` makes each refresh of the deployed model run the search in enumeration mode, returning up to that many distinct feasible builds; the report prints the solve status and the number of builds. The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; a rule of the model binds the value slot to `1` and publishes just the picked options as the `SelectedOption` relationship, which the report selects, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
+**4. Solve in multi-solution mode, deploy, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)` makes each refresh of the deployed model run the search in enumeration mode, returning up to that many distinct feasible builds; the report prints the solve status and the number of builds. The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; a rule of the model binds the value slot to `1` and publishes just the picked options as the `SelectedOption` relationship and each build's total price in cents as `BuildTotal`, a sum over the build's picked options. The report selects both, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
 
-For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/build_enumeration.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 

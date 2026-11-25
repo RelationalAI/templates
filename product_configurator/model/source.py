@@ -42,7 +42,7 @@ model.define(Excludes.new(model.data(excludes_csv).to_schema()))
 # Validate the regional catalog against TARGET_REGION
 # --------------------------------------------------
 
-# The ICs in `model/reasoning.py` are scoped via `model.where(Option.allowed_in(TARGET_REGION), ...)`,
+# The ICs in `model/build_enumeration.py` are scoped via `model.where(Option.allowed_in(TARGET_REGION), ...)`,
 # which silently drops any IC whose options are not all region-allowed. The
 # checks below catch the two failure modes that scoping hides; see the README
 # troubleshooting blocks for the recovery steps.
