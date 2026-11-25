@@ -27,9 +27,10 @@ model.where(
 Factor.signature_type = model.Property(f"{Factor} has signature defect type {String:type}")
 Factor.signature_share = model.Property(f"{Factor} has signature share {Float:share}")
 _n_units = Integer.ref()
+# Most units first (negated count), ties broken by defect type name.
 model.where(
     Factor.defect_type_count(_type, _n_units),
-    aggs.rank(aggs.desc(_n_units), aggs.asc(_type)).per(Factor) == 1,
+    aggs.rank(-_n_units, _type).per(Factor) == 1,
 ).define(
     Factor.signature_type(_type),
     Factor.signature_share(floats.float(_n_units) / floats.float(Factor.defect_count)),

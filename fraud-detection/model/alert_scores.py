@@ -33,10 +33,11 @@ model.define(AuditCandidate.alert_score(
 )
 
 # The alert queue order: highest alert score first, ties broken by the lower
-# transaction id.
+# transaction id. The score is negated so both keys sort ascending: the Logic
+# engine's rank does not mix ascending and descending keys.
 AuditCandidate.alert_rank = model.Property(f"{AuditCandidate} has {Integer:alert_rank}")
 model.define(AuditCandidate.alert_rank(
-    aggs.rank(aggs.desc(AuditCandidate.alert_score), aggs.asc(AuditCandidate.transaction_id))
+    aggs.rank(-AuditCandidate.alert_score, AuditCandidate.transaction_id)
 ))
 
 # Expected loss an audit averts: the alert score times the amount at stake.

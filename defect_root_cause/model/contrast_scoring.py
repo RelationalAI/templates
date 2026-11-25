@@ -75,7 +75,8 @@ model.where(
 # The naive view: factors ranked by the raw count of defective units they
 # touch, most first, ties broken by factor id. High-volume factors top it
 # because they touch almost everything -- the bias contrast scoring corrects.
+# The count is negated so both keys sort ascending, a form every backend ranks.
 Factor.raw_defect_rank = model.Property(f"{Factor} has {Integer:raw_defect_rank}")
 model.define(Factor.raw_defect_rank(
-    aggs.rank(aggs.desc(Factor.defect_count), aggs.asc(Factor.id))
+    aggs.rank(-Factor.defect_count, Factor.id)
 ))
