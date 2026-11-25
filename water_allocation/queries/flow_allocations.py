@@ -13,10 +13,12 @@ if __name__ == "__main__":
     if not status:
         raise SystemExit("The deployed model has no solve result yet; refresh it, then run the query again.")
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["LOCALLY_SOLVED"]:  # Ipopt's status for a solved nonlinear program
+        raise SystemExit(f"termination status {status}: no solution available")
     if cost:
         print(f"• objective: {round(cost[0], 9)}\n")
 
-    print(f"Status: {status[0]}")  # Ipopt returns LOCALLY_SOLVED
+    print(f"Status: {status[0]}")
     if cost:
         print(f"Total cost: ${cost[0]:.2f}")
 
