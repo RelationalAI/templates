@@ -37,7 +37,7 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
 
 ## What's included
 
-- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `runner_allocation.py` states one decision problem per concurrency scenario and one for the maintenance outage, and publishes each runner's job count and job list), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `runner_allocation.py` states one decision problem per concurrency scenario and one for the maintenance outage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the model itself.
 - **Sample data**: 8 runner types, 20 workflow jobs, and their pre-computed compatibility pairs. See *Sample data* below.
@@ -266,7 +266,7 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py            # exports of the deployed model
 │   ├── schema.py              # concepts and properties
 │   ├── source.py              # sample data and the outage's runner check
-│   └── runner_allocation.py   # one solve per scenario, the outage solve and its conflict, each runner's load
+│   └── runner_allocation.py   # one solve per scenario, the outage solve and its conflict
 ├── queries/
 │   └── allocation_report.py   # report from the deployed model
 └── data/
