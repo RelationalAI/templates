@@ -40,7 +40,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 ## What's included
 
-- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` holds both stages), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
+- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `network_analysis.py` holds the graph stage, `inventory_allocation.py` holds the prescriptive stage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
@@ -205,7 +205,8 @@ warehouse_allocation/
     __init__.py             # exports of the deployed model
     schema.py               # Site, Route, and Demand concepts
     source.py               # loads the sample CSVs
-    reasoning.py            # Stage 1 graph + Stage 2 prescriptive
+    network_analysis.py     # Stage 1 graph: centrality, components, bridge routes
+    inventory_allocation.py # Stage 2 prescriptive: allocation problem
   queries/
     allocation_report.py    # report from the deployed model
   data/
@@ -253,7 +254,7 @@ Stage 1 characterizes the route topology three ways, then Stage 2 allocates inve
 sites/routes/demands CSVs → graph (centrality, components, bridges) → Site.centrality → optimizer (budget, demand, centrality floor) → allocation plan
 ```
 
-See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/network_analysis.py` and `model/inventory_allocation.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

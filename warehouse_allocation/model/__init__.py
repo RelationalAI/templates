@@ -20,6 +20,9 @@ The key pattern: the graph reasoner enriches the ontology with derived
 properties that the prescriptive reasoner references directly -- no manual
 data transfer between stages.
 
+The graph stage is `network_analysis.py` and the prescriptive stage is
+`inventory_allocation.py`, which imports the module whose centrality it reads.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the graph analysis
@@ -27,13 +30,22 @@ Run:
     from the deployed model.
 """
 
-from .reasoning import SiteComponent, SolveStatus, TotalHoldingCost, graph, problem
+from .inventory_allocation import SolveStatus, TotalHoldingCost, problem
+from .network_analysis import (
+    NetworkComponent,
+    NetworkState,
+    SiteComponent,
+    graph,
+    num_components,
+)
 from .schema import Demand, Route, Site, model
 from .source import DATA_DIR
 
 __all__ = [
     "DATA_DIR",
     "Demand",
+    "NetworkComponent",
+    "NetworkState",
     "Route",
     "Site",
     "SiteComponent",
@@ -41,5 +53,6 @@ __all__ = [
     "TotalHoldingCost",
     "graph",
     "model",
+    "num_components",
     "problem",
 ]

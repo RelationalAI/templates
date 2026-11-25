@@ -1,54 +1,12 @@
-"""Graph analysis of the distribution network, then the inventory allocation problem."""
+"""Inventory allocation: the linear program that allocates inventory across sites at minimum holding
+cost, with a centrality-proportional floor on the warehouses."""
 
 from relationalai.semantics import Float, String, sum
-from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-from .schema import Demand, Property, Route, Site, model
-
-# --------------------------------------------------
-# Stage 1: Graph Analysis -- identify critical network hubs
-# --------------------------------------------------
-
-graph = Graph(
-    model, directed=False, weighted=True, node_concept=Site, aggregator="sum", name="warehouse_network"
-)
-
-# Build edges from routes (undirected, weighted by capacity)
-route_ref = Route.ref()
-src, dst = Site.ref(), Site.ref()
-model.where(route_ref.source(src), route_ref.dest(dst)).define(
-    graph.Edge.new(src=src, dst=dst, weight=route_ref.capacity),
-)
-
-# Eigenvector centrality: stored directly on Site (via node_concept)
-Site.centrality = graph.eigenvector_centrality()
-
-# --------------------------------------------------
-# Stage 1b: Weakly Connected Components -- surface fragmentation
-# --------------------------------------------------
-
-# Each site's component, named by one of its sites, which the deployed model publishes for the queries.
-wcc = graph.weakly_connected_component()
-SiteComponent = model.Relationship(f"{Site} is in the component of {Site:component}")
-site_member, site_component = Site.ref(), Site.ref()
-model.where(wcc(site_member, site_component)).define(SiteComponent(site_member, site_component))
-
-# --------------------------------------------------
-# Stage 1c: Bridge Routes -- cross-region connectors
-# --------------------------------------------------
-# Routes whose endpoints lie in different regions: the links that carry
-# inter-region flow. This compares region labels only; it does not test
-# whether removing a route disconnects the graph.
-
-route_ref = Route.ref()
-src, dst = Site.ref(), Site.ref()
-Route.is_cross_region = Property(f"{Route} is cross-region {Float:is_cross_region}")
-model.where(
-    route_ref.source(src),
-    route_ref.dest(dst),
-    src.region != dst.region,
-).define(Route.is_cross_region(route_ref, 1.0))
+# Declares Site.centrality, the eigenvector centrality the warehouse floors read.
+from . import network_analysis  # noqa: F401
+from .schema import Demand, Property, Site, model
 
 # --------------------------------------------------
 # Stage 2: Prescriptive -- allocate inventory across sites
