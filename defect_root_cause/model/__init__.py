@@ -31,10 +31,9 @@ Each stage enriches the shared ontology, and downstream stages consume those
 enrichments as first-class properties -- the accretive enrichment pattern.
 
 Modules: `failure_timeline.py` (failure rate per build week and the spike
-onset), `genealogy.py` (Stage 1), `contrast_scoring.py` (Stage 2, plus the
-naive raw-count ranking), `diagnosis.py` (Stage 3), and
-`root_cause_evidence.py` (each suspect's defect signature and kind-specific
-evidence). Each module imports the modules whose declarations it reads.
+onset), `genealogy.py` (Stage 1), `contrast_scoring.py` (Stage 2),
+`diagnosis.py` (Stage 3), and `root_cause_evidence.py` (each suspect's defect
+signature). Each module imports the modules whose declarations it reads.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in

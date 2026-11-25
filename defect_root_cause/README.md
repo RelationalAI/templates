@@ -45,7 +45,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 
 ## What's included
 
-- **Model** (`model/` package): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account. `schema.py` declares the concepts and `source.py` loads the sample data. `failure_timeline.py` rolls failures up by build week, `genealogy.py`, `contrast_scoring.py`, and `diagnosis.py` state the three reasoning stages, and `root_cause_evidence.py` derives each suspect's corroborating evidence.
+- **Model** (`model/` package): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account. `schema.py` declares the concepts and `source.py` loads the sample data. `failure_timeline.py` rolls failures up by build week, `genealogy.py`, `contrast_scoring.py`, and `diagnosis.py` state the three reasoning stages, and `root_cause_evidence.py` derives each suspect's defect signature.
 - **Query** (`queries/root_cause_report.py`): prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data generator** (`generate_data.py`): rebuilds the sample corpus deterministically from a fixed seed. The generated files are already included, so you do not need to run it to use the template.
@@ -199,9 +199,9 @@ defect_root_cause/
 │   ├── source.py             # loads the CSVs
 │   ├── failure_timeline.py   # failure rate by build week and the spike onset
 │   ├── genealogy.py          # genealogy graph and backward reachability
-│   ├── contrast_scoring.py   # baseline, lift, suspects, and the raw-count ranking
+│   ├── contrast_scoring.py   # baseline, lift, and suspects
 │   ├── diagnosis.py          # the diagnosis solve and its headline
-│   └── root_cause_evidence.py # defect signature and kind-specific evidence
+│   └── root_cause_evidence.py # defect signature of each suspect
 ├── queries/
 │   └── root_cause_report.py  # report printed from the deployed model
 ├── generate_data.py          # regenerates the corpus (CSVs already included)
@@ -246,7 +246,7 @@ failure timeline -> genealogy graph -> contrast scoring -> minimal-diagnosis opt
 
 ### Locate the spike onset
 
-A real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week (`BuildWeek`) locates the onset (`SpikeOnset`) — the first week whose rate runs above twice the opening week's — which tells the rest of the chain which window to interrogate. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two.
+A real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week (`BuildWeek`) locates the onset (`SpikeOnset`) — the first week whose rate runs above twice the opening week's — which marks the window an investigator interrogates first. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two.
 
 ### Trace the genealogy backward (Graph)
 

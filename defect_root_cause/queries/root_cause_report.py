@@ -83,17 +83,15 @@ if __name__ == "__main__":
     # every finished unit that carries it.
     n_incidence = int(model.select(num_incidence).to_df().iloc[0, 0])
     top_raw = (
-        model.where(Factor.raw_defect_rank <= TOP_RAW_FACTORS)
-        .select(
+        model.select(
             Factor.id.alias("factor"),
             Factor.kind.alias("kind"),
             Factor.touched_count.alias("units"),
             Factor.defect_count.alias("defects"),
-            Factor.raw_defect_rank.alias("rank"),
         )
         .to_df()
-        .sort_values("rank")
-        .drop(columns="rank")
+        .sort_values(["defects", "factor"], ascending=[False, True])
+        .head(TOP_RAW_FACTORS)
         .reset_index(drop=True)
     )
     print(
@@ -189,19 +187,47 @@ if __name__ == "__main__":
         # the defect signature it concentrates (a paste fault should present as cold
         # solder, a reflow fault as solder bridging), plus a kind-specific tell --
         # supplier and receipt date for a lot, calibration age for a machine. The model
-        # publishes both for every suspect factor; the diagnosis is the hypothesis, this
-        # is the supporting evidence an engineer would confirm physically.
-        evidence = (
+        # publishes the signature of every suspect factor; the diagnosis is the
+        # hypothesis, this is the supporting evidence an engineer would confirm physically.
+        signatures = (
             model.where((f := Factor.ref()).is_root_cause > 0.5)
             .select(
                 f.id.alias("factor"),
                 f.signature_type.alias("signature_type"),
                 f.signature_share.alias("signature_share"),
-                f.evidence.alias("evidence"),
             )
             .to_df()
+            .set_index("factor")
         )
         print("\nCorroborating evidence per root cause:")
-        for _, row in diagnosis.merge(evidence, on="factor", how="left").iterrows():
-            signature = f"{row['signature_share']:.0%} {row['signature_type']}"
-            print(f"  {row['label']:<26} {signature:<18} {row['evidence']}")
+        for _, row in diagnosis.iterrows():
+            fid, kind, label = row["factor"], row["kind"], row["label"]
+            sig = signatures.loc[fid]
+            signature = f"{sig['signature_share']:.0%} {sig['signature_type']}"
+            # Each kind's evidence is read through the factor's typed pointer to its lot,
+            # machine, or shift.
+            if kind == "LOT":
+                tell_df = (
+                    model.where((fl := Factor.ref()).id == fid)
+                    .select(
+                        fl.lot.supplier.name.alias("supplier"),
+                        fl.lot.received_date.alias("recv"),
+                    )
+                    .to_df()
+                )
+                tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
+            elif kind == "MACHINE":
+                tell_df = (
+                    model.where((fm := Factor.ref()).id == fid)
+                    .select(fm.machine.calibration_age_days.alias("age"))
+                    .to_df()
+                )
+                tell = f"{int(tell_df['age'].iloc[0])} days since last calibration"
+            else:
+                shift_df = (
+                    model.where((fs := Factor.ref()).id == fid)
+                    .select(fs.shift_name.alias("shift"))
+                    .to_df()
+                )
+                tell = f"{shift_df['shift'].iloc[0]} shift"
+            print(f"  {label:<26} {signature:<18} {tell}")

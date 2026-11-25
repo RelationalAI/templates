@@ -1,6 +1,5 @@
 """Contrast scoring: the plant-wide failure rate, each candidate factor's defect counts, rate, and
-lift over that baseline, the suspects screened for the diagnosis, and the naive ranking by raw
-defect count."""
+lift over that baseline, and the suspects screened for the diagnosis."""
 
 from relationalai.semantics import Float, Integer
 from relationalai.semantics.std import aggregates as aggs
@@ -71,12 +70,3 @@ model.where(
     Factor.touched_count >= MIN_SUPPORT,
     Factor.defect_count >= MIN_DEFECTS
 ).define(Factor.is_suspect(Factor))
-
-# The naive view: factors ranked by the raw count of defective units they
-# touch, most first, ties broken by factor id. High-volume factors top it
-# because they touch almost everything -- the bias contrast scoring corrects.
-# The count is negated so both keys sort ascending, a form every backend ranks.
-Factor.raw_defect_rank = model.Property(f"{Factor} has {Integer:raw_defect_rank}")
-model.define(Factor.raw_defect_rank(
-    aggs.rank(-Factor.defect_count, Factor.id)
-))
