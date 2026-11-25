@@ -226,18 +226,16 @@ if __name__ == "__main__":
     u_disp = User.ref()
     b_disp = Book.ref()
     s_disp = Subject.ref()
-    model.select(
+    # Only subjects with at least one pick are listed.
+    model.where(
+        Candidate.user_id == u_disp.id,
+        Candidate.book_id == b_disp.id,
+        Book.about(b_disp, s_disp),
+        Candidate.slot <= SLATE_SIZE_K,
+    ).select(
         u_disp.id.alias("user_id"),
         s_disp.name.alias("subject"),
-        count(Candidate)
-        .per(u_disp, s_disp)
-        .where(
-            Candidate.user_id == u_disp.id,
-            Candidate.book_id == b_disp.id,
-            Book.about(b_disp, s_disp),
-            Candidate.slot <= SLATE_SIZE_K,
-        )
-        .alias("n_picked"),
+        count(Candidate).per(u_disp, s_disp).alias("n_picked"),
     ).inspect()
 
     print("\nExplanation-path support per picked item (ordered by slot):")
