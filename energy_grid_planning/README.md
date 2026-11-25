@@ -284,7 +284,7 @@ One shared ontology threads all five stages. Each stage reads properties earlier
 demand forecasts → predicted_load ───────────────┬→ compliance rules (with generation mix)
 grid topology + centrality → structural flags ───┘
                            └→ corridor fragility (reported)
-predicted_load + upgrade costs + revenue → MIP per budget level → Pareto frontier
+predicted_load + upgrade costs + revenue → one MIP across the budget levels → Pareto frontier
 ```
 
 ### Stage 1: Predict -- Substation Load Forecasting
@@ -331,7 +331,7 @@ Focus on the first changes most users will make.
 - **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
 - **Corridor hop bound** — `MAX_CORRIDOR_HOPS` in `model/reasoning.py` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
 - **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/reasoning.py` sets how many substations Stage 2 flags critical, ranked by the sum of their betweenness, degree, and eigenvector centrality ranks, feeding Stage 4's structural rule.
-- **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` to reweight which requests clear at each budget; the net-value amortization changes only the reported net value and knee, not the approvals.
+- **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` to reweight which requests clear at each budget; the net-value amortization changes only the reported net value, marginal value per budget step and knee, not the approvals.
 
 ### Extend the model
 
